@@ -1067,6 +1067,7 @@ class TestByteStreamSplitEncoding : public TestEncodingBase<Type> {
   static constexpr int TYPE = Type::type_num;
 
   void CheckRoundtrip() override {
+    std::cout << "CheckRoundtrip for BYTE_STREAM_SPLIT called, num_values is " << num_values_ << std::endl;
     auto encoder =
         MakeTypedEncoder<Type>(Encoding::BYTE_STREAM_SPLIT, false, descr_.get());
     auto decoder = MakeTypedDecoder<Type>(Encoding::BYTE_STREAM_SPLIT, descr_.get());
@@ -1094,6 +1095,7 @@ class TestByteStreamSplitEncoding : public TestEncodingBase<Type> {
             VerifyResults<c_type>(decode_buf_, &draws_[i], num_decoded));
         remaining -= num_decoded;
       }
+      EXPECT_EQ(0, remaining);
     }
 
     {
@@ -1122,6 +1124,29 @@ class TestByteStreamSplitEncoding : public TestEncodingBase<Type> {
       ASSERT_NO_FATAL_FAILURE(VerifyResults<c_type>(
           decode_buf_, expected_filtered_output.data(), expected_size));
     }
+  }
+
+  void CheckRoundtripSpaced(const uint8_t* valid_bits,
+                            int64_t valid_bits_offset) override {
+    auto encoder =
+        MakeTypedEncoder<Type>(Encoding::BYTE_STREAM_SPLIT, false, descr_.get());
+    auto decoder = MakeTypedDecoder<Type>(Encoding::BYTE_STREAM_SPLIT, descr_.get());
+    int null_count = 0;
+    for (auto i = 0; i < num_values_; i++) {
+      if (!bit_util::GetBit(valid_bits, valid_bits_offset + i)) {
+        null_count++;
+      }
+    }
+
+    encoder->PutSpaced(draws_, num_values_, valid_bits, valid_bits_offset);
+    encode_buffer_ = encoder->FlushValues();
+    decoder->SetData(num_values_, encode_buffer_->data(),
+                     static_cast<int>(encode_buffer_->size()));
+    auto values_decoded = decoder->DecodeSpaced(decode_buf_, num_values_ - null_count, null_count,
+                                                valid_bits, valid_bits_offset);
+    ASSERT_EQ(num_values_ - null_count, values_decoded);
+    ASSERT_NO_FATAL_FAILURE(VerifyResultsSpaced<c_type>(
+        decode_buf_, draws_, num_values_ - null_count, valid_bits, valid_bits_offset));
   }
 
   void CheckDecode();
@@ -1244,6 +1269,28 @@ TYPED_TEST(TestByteStreamSplitEncoding, BasicRoundTrip) {
 
 TYPED_TEST(TestByteStreamSplitEncoding, RoundTripSingleElement) {
   ASSERT_NO_FATAL_FAILURE(this->Execute(1, 1));
+}
+
+TYPED_TEST(TestByteStreamSplitEncoding, RoundTripSpace) {
+  ASSERT_NO_FATAL_FAILURE(this->Execute(10000, 1));
+
+  // Spaced test with different sizes and offset to guarantee SIMD implementation
+  constexpr int kAvx512Size = 64;         // sizeof(__m512i) for Avx512
+  constexpr int kSimdSize = kAvx512Size;  // Current the max is Avx512
+  constexpr int kMultiSimdSize = kSimdSize * 33;
+
+  for (auto null_prob : {0.001, 0.1, 0.5, 0.9, 0.999}) {
+    // Test with both size and offset up to 3 Simd block
+    for (auto i = 1; i < kSimdSize * 3; i++) {
+      ASSERT_NO_FATAL_FAILURE(this->ExecuteSpaced(i, 1, 0, null_prob));
+      ASSERT_NO_FATAL_FAILURE(this->ExecuteSpaced(i, 1, i + 1, null_prob));
+    }
+    // Large block and offset
+    ASSERT_NO_FATAL_FAILURE(this->ExecuteSpaced(kMultiSimdSize, 1, 0, null_prob));
+    ASSERT_NO_FATAL_FAILURE(this->ExecuteSpaced(kMultiSimdSize + 33, 1, 0, null_prob));
+    ASSERT_NO_FATAL_FAILURE(this->ExecuteSpaced(kMultiSimdSize, 1, 33, null_prob));
+    ASSERT_NO_FATAL_FAILURE(this->ExecuteSpaced(kMultiSimdSize + 33, 1, 33, null_prob));
+  }
 }
 
 TYPED_TEST(TestByteStreamSplitEncoding, CheckOnlyDecode) {

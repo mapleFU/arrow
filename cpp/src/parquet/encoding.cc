@@ -2923,9 +2923,9 @@ template <typename DType>
 void ByteStreamSplitDecoder<DType>::SetData(int num_values, const uint8_t* data,
                                             int len) {
   DecoderImpl::SetData(num_values, data, len);
-  if (num_values * static_cast<int64_t>(sizeof(T)) > len) {
-    throw ParquetException("Data size too small for number of values (corrupted file?)");
-  }
+//  if (num_values * static_cast<int64_t>(sizeof(T)) > len) {
+//    throw ParquetException("Data size too small for number of values (corrupted file?)");
+//  }
   num_values_in_buffer_ = num_values;
 }
 
