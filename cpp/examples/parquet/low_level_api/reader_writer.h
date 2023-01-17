@@ -47,10 +47,10 @@ static std::shared_ptr<GroupNode> SetupSchema() {
   fields.push_back(PrimitiveNode::Make("int96_field", Repetition::REQUIRED, Type::INT96,
                                        ConvertedType::NONE));
 
-  fields.push_back(PrimitiveNode::Make("float_field", Repetition::REQUIRED, Type::FLOAT,
+  fields.push_back(PrimitiveNode::Make("float_field", Repetition::OPTIONAL, Type::FLOAT,
                                        ConvertedType::NONE));
 
-  fields.push_back(PrimitiveNode::Make("double_field", Repetition::REQUIRED, Type::DOUBLE,
+  fields.push_back(PrimitiveNode::Make("double_field", Repetition::OPTIONAL, Type::DOUBLE,
                                        ConvertedType::NONE));
 
   // Create a primitive node named 'ba_field' with type:BYTE_ARRAY, repetition:OPTIONAL

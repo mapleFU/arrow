@@ -42,7 +42,7 @@
  * https://github.com/apache/parquet-format/blob/master/LogicalTypes.md
  **/
 
-constexpr int NUM_ROWS_PER_ROW_GROUP = 500;
+constexpr int NUM_ROWS_PER_ROW_GROUP = 2500;
 const char PARQUET_FILENAME[] = "parquet_cpp_example.parquet";
 
 int main(int argc, char** argv) {
@@ -63,7 +63,12 @@ int main(int argc, char** argv) {
 
     // Add writer properties
     parquet::WriterProperties::Builder builder;
-    builder.compression(parquet::Compression::SNAPPY);
+    builder.compression(parquet::Compression::SNAPPY)
+        ->encoding("schema.float_field", parquet::Encoding::BYTE_STREAM_SPLIT)
+        ->encoding("schema.double_field", parquet::Encoding::BYTE_STREAM_SPLIT)
+        ->encoding("float_field", parquet::Encoding::BYTE_STREAM_SPLIT)
+        ->encoding("double_field", parquet::Encoding::BYTE_STREAM_SPLIT)
+        ->disable_dictionary();
     std::shared_ptr<parquet::WriterProperties> props = builder.build();
 
     // Create a ParquetFileWriter instance
@@ -119,7 +124,12 @@ int main(int argc, char** argv) {
         static_cast<parquet::FloatWriter*>(rg_writer->NextColumn());
     for (int i = 0; i < NUM_ROWS_PER_ROW_GROUP; i++) {
       float value = static_cast<float>(i) * 1.1f;
-      float_writer->WriteBatch(1, nullptr, nullptr, &value);
+      int16_t definition_level = 1;
+      int16_t repetition_level = 0;
+      if (i % 3 == 0) {
+        definition_level = 0;
+      }
+      float_writer->WriteBatch(1, &definition_level, &repetition_level, &value);
     }
 
     // Write the Double column
@@ -127,7 +137,12 @@ int main(int argc, char** argv) {
         static_cast<parquet::DoubleWriter*>(rg_writer->NextColumn());
     for (int i = 0; i < NUM_ROWS_PER_ROW_GROUP; i++) {
       double value = i * 1.1111111;
-      double_writer->WriteBatch(1, nullptr, nullptr, &value);
+      int16_t definition_level = 1;
+      int16_t repetition_level = 0;
+      if (i % 3 == 2) {
+        definition_level = 0;
+      }
+      double_writer->WriteBatch(1, &definition_level, &repetition_level, &value);
     }
 
     // Write the ByteArray column. Make every alternate values NULL
@@ -314,14 +329,19 @@ int main(int argc, char** argv) {
         float value;
         // Read one value at a time. The number of rows read is returned. values_read
         // contains the number of non-null rows
-        rows_read = float_reader->ReadBatch(1, nullptr, nullptr, &value, &values_read);
-        // Ensure only one value is read
-        assert(rows_read == 1);
-        // There are no NULL values in the rows written
-        assert(values_read == 1);
-        // Verify the value written
-        float expected_value = static_cast<float>(i) * 1.1f;
-        assert(value == expected_value);
+        rows_read = float_reader->ReadBatch(1, &definition_level, nullptr, &value, &values_read);
+        if (i % 3 != 0) {
+          assert(definition_level == 1);
+          // Ensure only one value is read
+          assert(rows_read == 1);
+          // There are no NULL values in the rows written
+          assert(values_read == 1);
+          // Verify the value written
+          float expected_value = static_cast<float>(i) * 1.1f;
+          assert(value == expected_value);
+        } else {
+          assert(definition_level == 0);
+        }
         i++;
       }
 
@@ -335,14 +355,19 @@ int main(int argc, char** argv) {
         double value;
         // Read one value at a time. The number of rows read is returned. values_read
         // contains the number of non-null rows
-        rows_read = double_reader->ReadBatch(1, nullptr, nullptr, &value, &values_read);
-        // Ensure only one value is read
-        assert(rows_read == 1);
-        // There are no NULL values in the rows written
-        assert(values_read == 1);
-        // Verify the value written
-        double expected_value = i * 1.1111111;
-        assert(value == expected_value);
+        rows_read = double_reader->ReadBatch(1, &definition_level, nullptr, &value, &values_read);
+        if (i % 3 != 2) {
+          assert(definition_level == 1);
+          // Ensure only one value is read
+          assert(rows_read == 1);
+          // There are no NULL values in the rows written
+          assert(values_read == 1);
+          // Verify the value written
+          double expected_value = i * 1.1111111;
+          assert(value == expected_value);
+        } else {
+          assert(definition_level == 0);
+        }
         i++;
       }
 
