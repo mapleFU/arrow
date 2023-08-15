@@ -112,6 +112,57 @@ int64_t StreamingCompress(Codec* codec, const std::vector<uint8_t>& data,
   return compressed_size;
 }
 
+int64_t NonStreamingCompress(Codec* codec, const std::vector<uint8_t>& data,
+                          std::vector<uint8_t>* compressed_data = nullptr) {
+  if (compressed_data != nullptr) {
+    compressed_data->clear();
+    compressed_data->shrink_to_fit();
+  }
+  auto& compressor = codec;
+
+  const uint8_t* input = data.data();
+  int64_t input_len = data.size();
+  int64_t compressed_size = 0;
+
+  std::vector<uint8_t> output_buffer(1 << 23);  // 1 MB
+
+  while (input_len > 0) {
+    auto result = *compressor->Compress(input_len, input, output_buffer.size(),
+                                        output_buffer.data());
+//    input += result.bytes_read;
+//    input_len -= result.bytes_read;
+//    compressed_size += result.bytes_written;
+//    if (compressed_data != nullptr && result.bytes_written > 0) {
+//      compressed_data->resize(compressed_data->size() + result.bytes_written);
+//      memcpy(compressed_data->data() + compressed_data->size() - result.bytes_written,
+//             output_buffer.data(), result.bytes_written);
+//    }
+//    if (result.bytes_read == 0) {
+//      // Need to enlarge output buffer
+//      output_buffer.resize(output_buffer.size() * 2);
+//    }
+  }
+  /*
+  while (true) {
+    auto result = *compressor->End(output_buffer.size(), output_buffer.data());
+    compressed_size += result.bytes_written;
+    if (compressed_data != nullptr && result.bytes_written > 0) {
+      compressed_data->resize(compressed_data->size() + result.bytes_written);
+      memcpy(compressed_data->data() + compressed_data->size() - result.bytes_written,
+             output_buffer.data(), result.bytes_written);
+    }
+    if (result.should_retry) {
+      // Need to enlarge output buffer
+      output_buffer.resize(output_buffer.size() * 2);
+    } else {
+      break;
+    }
+  }
+  return compressed_size;
+  */
+  return 0;
+}
+
 static void StreamingCompression(Compression::type compression,
                                  const std::vector<uint8_t>& data,
                                  benchmark::State& state) {  // NOLINT non-const reference
@@ -167,12 +218,54 @@ static void StreamingDecompression(
   state.SetBytesProcessed(state.iterations() * data.size());
 }
 
+static void NonStreamingDecompression(
+    Compression::type compression, const std::vector<uint8_t>& data,
+    benchmark::State& state) {  // NOLINT non-const reference
+  auto codec = *Codec::Create(compression);
+
+  std::vector<uint8_t> compressed_data;
+  ARROW_UNUSED(StreamingCompress(codec.get(), data, &compressed_data));
+  state.counters["ratio"] =
+      static_cast<double>(data.size()) / static_cast<double>(compressed_data.size());
+
+  while (state.KeepRunning()) {
+    auto& decompressor = codec;
+
+    const uint8_t* input = compressed_data.data();
+    int64_t input_len = compressed_data.size();
+    int64_t decompressed_size = 0;
+    std::vector<uint8_t> output_buffer(data.size());  // 1 MB
+    {
+      [[maybe_unused]] auto result = *decompressor->Decompress(input_len, input, output_buffer.size(),
+                                              output_buffer.data());
+    }
+    // ARROW_CHECK(decompressed_size == static_cast<int64_t>(data.size()));
+  }
+  state.SetBytesProcessed(state.iterations() * data.size());
+}
+
 template <Compression::type COMPRESSION>
 static void ReferenceStreamingDecompression(
     benchmark::State& state) {                        // NOLINT non-const reference
   auto data = MakeCompressibleData(8 * 1024 * 1024);  // 8 MB
 
   StreamingDecompression(COMPRESSION, data, state);
+}
+
+template <Compression::type COMPRESSION>
+static void ReferenceNonStreamingDecompression(
+    benchmark::State& state) {                        // NOLINT non-const reference
+  auto data = MakeCompressibleData(8 * 1024 * 1024);  // 8 MB
+
+  NonStreamingDecompression(COMPRESSION, data, state);
+}
+
+template <Compression::type COMPRESSION>
+static void ReferenceNonStreamingDecompression2(
+    benchmark::State& state) {                        // NOLINT non-const reference
+  auto data = MakeCompressibleData(8 * 1024);  // 8 MB
+
+  NonStreamingDecompression(COMPRESSION, data, state);
 }
 
 #ifdef ARROW_WITH_ZLIB
@@ -186,8 +279,9 @@ BENCHMARK_TEMPLATE(ReferenceStreamingDecompression, Compression::BROTLI);
 #endif
 
 #ifdef ARROW_WITH_ZSTD
-BENCHMARK_TEMPLATE(ReferenceStreamingCompression, Compression::ZSTD);
+BENCHMARK_TEMPLATE(ReferenceNonStreamingDecompression2, Compression::ZSTD);
 BENCHMARK_TEMPLATE(ReferenceStreamingDecompression, Compression::ZSTD);
+BENCHMARK_TEMPLATE(ReferenceNonStreamingDecompression, Compression::ZSTD);
 #endif
 
 #ifdef ARROW_WITH_LZ4
