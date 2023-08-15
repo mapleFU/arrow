@@ -16,12 +16,14 @@
 // under the License.
 
 #include "arrow/util/compression_internal.h"
+#include "arrow/util/core_local_array.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 
 #include <zstd.h>
+#include <cassert>
 
 #include "arrow/result.h"
 #include "arrow/status.h"
@@ -39,6 +41,190 @@ namespace {
 Status ZSTDError(size_t ret, const char* prefix_msg) {
   return Status::IOError(prefix_msg, ZSTD_getErrorName(ret));
 }
+
+
+class ZSTDUncompressCachedData;
+
+class CompressionContextCache {
+ public:
+  // Singleton
+  static CompressionContextCache* Instance();
+  static void InitSingleton();
+  CompressionContextCache(const CompressionContextCache&) = delete;
+  CompressionContextCache& operator=(const CompressionContextCache&) = delete;
+
+  ZSTDUncompressCachedData GetCachedZSTDUncompressData();
+  void ReturnCachedZSTDUncompressData(int64_t idx);
+
+ private:
+  // Singleton
+  CompressionContextCache();
+  ~CompressionContextCache();
+
+  class Rep;
+  Rep* rep_;
+};
+
+// Cached data represents a portion that can be re-used
+// If, in the future we have more than one native context to
+// cache we can arrange this as a tuple
+class ZSTDUncompressCachedData {
+ public:
+  using ZSTDNativeContext = ZSTD_DCtx*;
+  ZSTDUncompressCachedData() {}
+  // Init from cache
+  ZSTDUncompressCachedData(const ZSTDUncompressCachedData& o) = delete;
+  ZSTDUncompressCachedData& operator=(const ZSTDUncompressCachedData&) = delete;
+  ZSTDUncompressCachedData(ZSTDUncompressCachedData&& o) noexcept
+      : ZSTDUncompressCachedData() {
+    *this = std::move(o);
+  }
+  ZSTDUncompressCachedData& operator=(ZSTDUncompressCachedData&& o) noexcept {
+    assert(zstd_ctx_ == nullptr);
+    std::swap(zstd_ctx_, o.zstd_ctx_);
+    std::swap(cache_idx_, o.cache_idx_);
+    return *this;
+  }
+  ZSTDNativeContext Get() const { return zstd_ctx_; }
+  int64_t GetCacheIndex() const { return cache_idx_; }
+  void CreateIfNeeded() {
+    if (zstd_ctx_ == nullptr) {
+#ifdef ROCKSDB_ZSTD_CUSTOM_MEM
+      zstd_ctx_ =
+          ZSTD_createDCtx_advanced(port::GetJeZstdAllocationOverrides());
+#else   // ROCKSDB_ZSTD_CUSTOM_MEM
+      zstd_ctx_ = ZSTD_createDCtx();
+#endif  // ROCKSDB_ZSTD_CUSTOM_MEM
+      cache_idx_ = -1;
+    }
+  }
+  void InitFromCache(const ZSTDUncompressCachedData& o, int64_t idx) {
+    zstd_ctx_ = o.zstd_ctx_;
+    cache_idx_ = idx;
+  }
+  ~ZSTDUncompressCachedData() {
+    if (zstd_ctx_ != nullptr && cache_idx_ == -1) {
+      ZSTD_freeDCtx(zstd_ctx_);
+    }
+  }
+
+ private:
+  ZSTDNativeContext zstd_ctx_ = nullptr;
+  int64_t cache_idx_ = -1;  // -1 means this instance owns the context
+};
+
+class UncompressionContext {
+ private:
+  CompressionContextCache* ctx_cache_ = nullptr;
+  ZSTDUncompressCachedData uncomp_cached_data_;
+
+ public:
+  explicit UncompressionContext() {
+    ctx_cache_ = CompressionContextCache::Instance();
+    uncomp_cached_data_ = ctx_cache_->GetCachedZSTDUncompressData();
+  }
+  ~UncompressionContext() {
+    if (uncomp_cached_data_.GetCacheIndex() != -1) {
+      assert(ctx_cache_ != nullptr);
+      ctx_cache_->ReturnCachedZSTDUncompressData(
+          uncomp_cached_data_.GetCacheIndex());
+    }
+  }
+  UncompressionContext(const UncompressionContext&) = delete;
+  UncompressionContext& operator=(const UncompressionContext&) = delete;
+
+  ZSTDUncompressCachedData::ZSTDNativeContext GetZSTDContext() const {
+    return uncomp_cached_data_.Get();
+  }
+};
+
+void* const SentinelValue = nullptr;
+
+constexpr size_t CACHE_LINE_SIZE = 64;
+
+// Cache ZSTD uncompression contexts for reads
+// if needed we can add ZSTD compression context caching
+// which is currently is not done since BlockBasedTableBuilder
+// simply creates one compression context per new SST file.
+struct ZSTDCachedData {
+  // We choose to cache the below structure instead of a ptr
+  // because we want to avoid a) native types leak b) make
+  // cache use transparent for the user
+  ZSTDUncompressCachedData uncomp_cached_data_;
+  std::atomic<void*> zstd_uncomp_sentinel_;
+
+  char
+      padding[(CACHE_LINE_SIZE -
+               (sizeof(ZSTDUncompressCachedData) + sizeof(std::atomic<void*>)) %
+                   CACHE_LINE_SIZE)];  // unused padding field
+
+  ZSTDCachedData() : zstd_uncomp_sentinel_(&uncomp_cached_data_) {}
+  ZSTDCachedData(const ZSTDCachedData&) = delete;
+  ZSTDCachedData& operator=(const ZSTDCachedData&) = delete;
+
+  ZSTDUncompressCachedData GetUncompressData(int64_t idx) {
+    ZSTDUncompressCachedData result;
+    void* expected = &uncomp_cached_data_;
+    if (zstd_uncomp_sentinel_.compare_exchange_strong(expected,
+                                                      SentinelValue)) {
+      uncomp_cached_data_.CreateIfNeeded();
+      result.InitFromCache(uncomp_cached_data_, idx);
+    } else {
+      // Creates one time use data
+      result.CreateIfNeeded();
+    }
+    return result;
+  }
+  // Return the entry back into circulation
+  // This is executed only when we successfully obtained
+  // in the first place
+  void ReturnUncompressData() {
+    if (zstd_uncomp_sentinel_.exchange(&uncomp_cached_data_) != SentinelValue) {
+      // Means we are returning while not having it acquired.
+      assert(false);
+    }
+  }
+};
+static_assert(sizeof(ZSTDCachedData) % CACHE_LINE_SIZE == 0,
+              "Expected CACHE_LINE_SIZE alignment");
+
+class CompressionContextCache::Rep {
+ public:
+  Rep() {}
+  ZSTDUncompressCachedData GetZSTDUncompressData() {
+    auto p = per_core_uncompr_.AccessElementAndIndex();
+    int64_t idx = static_cast<int64_t>(p.second);
+    return p.first->GetUncompressData(idx);
+  }
+  void ReturnZSTDUncompressData(int64_t idx) {
+    assert(idx >= 0);
+    auto* cn = per_core_uncompr_.AccessAtCore(static_cast<size_t>(idx));
+    cn->ReturnUncompressData();
+  }
+
+ private:
+  CoreLocalArray<ZSTDCachedData> per_core_uncompr_;
+};
+
+CompressionContextCache::CompressionContextCache() : rep_(new Rep()) {}
+
+CompressionContextCache* CompressionContextCache::Instance() {
+  static CompressionContextCache instance;
+  return &instance;
+}
+
+void CompressionContextCache::InitSingleton() { Instance(); }
+
+ZSTDUncompressCachedData
+CompressionContextCache::GetCachedZSTDUncompressData() {
+  return rep_->GetZSTDUncompressData();
+}
+
+void CompressionContextCache::ReturnCachedZSTDUncompressData(int64_t idx) {
+  rep_->ReturnZSTDUncompressData(idx);
+}
+
+CompressionContextCache::~CompressionContextCache() { delete rep_; }
 
 // ----------------------------------------------------------------------
 // ZSTD decompressor implementation
@@ -187,9 +373,13 @@ class ZSTDCodec : public Codec {
       DCHECK_EQ(output_buffer_len, 0);
       output_buffer = &empty_buffer;
     }
+    auto cacheInstance = CompressionContextCache::Instance();
+    auto dctx = cacheInstance->GetCachedZSTDUncompressData().Get();
+    size_t ret = ZSTD_decompressDCtx(dctx, output_buffer, static_cast<size_t>(output_buffer_len),
+                        input, static_cast<size_t>(input_len));
 
-    size_t ret = ZSTD_decompress(output_buffer, static_cast<size_t>(output_buffer_len),
-                                 input, static_cast<size_t>(input_len));
+//    size_t ret = ZSTD_decompress(output_buffer, static_cast<size_t>(output_buffer_len),
+//                                 input, static_cast<size_t>(input_len));
     if (ZSTD_isError(ret)) {
       return ZSTDError(ret, "ZSTD decompression failed: ");
     }
