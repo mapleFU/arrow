@@ -64,16 +64,20 @@ void read_whole_file() {
   std::cout << "Reading parquet-arrow-example.parquet at once" << std::endl;
   std::shared_ptr<arrow::io::ReadableFile> infile;
   PARQUET_ASSIGN_OR_THROW(infile,
-                          arrow::io::ReadableFile::Open("parquet-arrow-example.parquet",
+                          arrow::io::ReadableFile::Open("/Users/fuxuwei/workspace/CMakeLibs/arrow/test.parquet",
                                                         arrow::default_memory_pool()));
 
   std::unique_ptr<parquet::arrow::FileReader> reader;
   PARQUET_THROW_NOT_OK(
       parquet::arrow::OpenFile(infile, arrow::default_memory_pool(), &reader));
+  std::shared_ptr<::arrow::Schema> schema_ptr;
+  PARQUET_THROW_NOT_OK(reader->GetSchema(&schema_ptr));
+  std::cout << schema_ptr->ToString(true) << std::endl;
   std::shared_ptr<arrow::Table> table;
   PARQUET_THROW_NOT_OK(reader->ReadTable(&table));
   std::cout << "Loaded " << table->num_rows() << " rows in " << table->num_columns()
             << " columns." << std::endl;
+  std::cout << table->ToString() << std::endl;
 }
 
 // #3: Read only a single RowGroup of the parquet file
@@ -131,10 +135,10 @@ void read_single_column_chunk() {
 }
 
 int main(int argc, char** argv) {
-  std::shared_ptr<arrow::Table> table = generate_table();
-  write_parquet_file(*table);
+//  std::shared_ptr<arrow::Table> table = generate_table();
+//  write_parquet_file(*table);
   read_whole_file();
-  read_single_rowgroup();
-  read_single_column();
-  read_single_column_chunk();
+//  read_single_rowgroup();
+//  read_single_column();
+//  read_single_column_chunk();
 }
