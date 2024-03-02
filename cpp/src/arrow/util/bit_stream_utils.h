@@ -23,11 +23,15 @@
 #include <cstdint>
 #include <cstring>
 
+#include <immintrin.h>
+
 #include "arrow/util/bit_util.h"
 #include "arrow/util/bpacking.h"
 #include "arrow/util/logging.h"
 #include "arrow/util/macros.h"
 #include "arrow/util/ubsan.h"
+
+#include "arrow/util/cpu_info.h"
 
 namespace arrow {
 namespace bit_util {
@@ -337,6 +341,27 @@ inline int BitReader::GetBatch(int num_bits, T* v, int batch_size) {
     }
   }
 
+#ifdef ARROW_HAVE_RUNTIME_BMI2
+  if (sizeof(T) == 1) {
+    static constexpr uint64_t kPdepMask8[] = {
+      0x0000000000000000,
+      0x0101010101010101,
+      0x0303030303030303,
+      0x0707070707070707,
+      0x0f0f0f0f0f0f0f0f,
+      0x1f1f1f1f1f1f1f1f,
+      0x3f3f3f3f3f3f3f3f,
+      0x7f7f7f7f7f7f7f7f,
+      0xffffffffffffffff};
+    const uint64_t mask = kPdepMask8[num_bits];
+    while (i < batch_size) {
+      // TODO(mwish): using memcpy
+      *reinterpret_cast<uint64_t*>(v + i) = _pdep_u64(*reinterpret_cast<const uint64_t*>(buffer + byte_offset), mask);
+      i += 8;
+      byte_offset += num_bits;
+    }
+  } else
+#endif
   if (sizeof(T) == 4) {
     int num_unpacked =
         internal::unpack32(reinterpret_cast<const uint32_t*>(buffer + byte_offset),
