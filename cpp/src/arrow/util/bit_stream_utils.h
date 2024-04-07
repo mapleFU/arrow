@@ -23,11 +23,15 @@
 #include <cstdint>
 #include <cstring>
 
+#include <immintrin.h>
+
 #include "arrow/util/bit_util.h"
 #include "arrow/util/bpacking.h"
 #include "arrow/util/logging.h"
 #include "arrow/util/macros.h"
 #include "arrow/util/ubsan.h"
+
+#include "arrow/util/cpu_info.h"
 
 namespace arrow {
 namespace bit_util {
@@ -337,12 +341,31 @@ inline int BitReader::GetBatch(int num_bits, T* v, int batch_size) {
     }
   }
 
+  static constexpr uint64_t kPdepMask8[] = {
+      0x0000000000000000, 0x0101010101010101, 0x0303030303030303,
+      0x0707070707070707, 0x0f0f0f0f0f0f0f0f, 0x1f1f1f1f1f1f1f1f,
+      0x3f3f3f3f3f3f3f3f, 0x7f7f7f7f7f7f7f7f, 0xffffffffffffffff};
+
   if (sizeof(T) == 2) {
-    int num_unpacked =
-        internal::unpack16(buffer + byte_offset, reinterpret_cast<uint16_t*>(v + i),
-                           batch_size - i, num_bits);
-    i += num_unpacked;
-    byte_offset += num_unpacked * num_bits / 8;
+    //    int num_unpacked =
+    //        internal::unpack16(buffer + byte_offset, reinterpret_cast<uint16_t*>(v + i),
+    //                           batch_size - i, num_bits);
+    //    i += num_unpacked;
+    //    byte_offset += num_unpacked * num_bits / 8;
+    const uint64_t mask = kPdepMask8[num_bits];
+    while (i + 16 < batch_size) {
+      uint64_t mask_value1{0};
+      uint64_t mask_value2{0};
+      memcpy(&mask_value1, buffer + byte_offset, sizeof(uint64_t));
+      memcpy(&mask_value2, buffer + byte_offset + num_bits, sizeof(uint64_t));
+      uint64_t result = _pdep_u64(mask_value1, mask);
+      uint64_t result2 = _pdep_u64(mask_value2, mask);
+      __m128i value{static_cast<long long>(result), static_cast<long long>(result2)};
+      __m256i final = _mm256_cvtepi8_epi16(value);
+      memcpy(v + i, &final, 16);
+      i += 16;
+      byte_offset += num_bits * 2;
+    }
   } else if (sizeof(T) == 4) {
     int num_unpacked =
         internal::unpack32(reinterpret_cast<const uint32_t*>(buffer + byte_offset),
