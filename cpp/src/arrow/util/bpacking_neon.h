@@ -23,6 +23,7 @@ namespace arrow {
 namespace internal {
 
 int unpack32_neon(const uint32_t* in, uint32_t* out, int batch_size, int num_bits);
+int unpack16_neon(const uint16_t* in, uint16_t* out, int batch_size, int num_bits);
 
 }  // namespace internal
 }  // namespace arrow

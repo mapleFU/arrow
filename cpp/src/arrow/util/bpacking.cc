@@ -18,6 +18,7 @@
 #include "arrow/util/bpacking.h"
 
 #include "arrow/util/bpacking64_default.h"
+#include "arrow/util/bpacking16_default.h"
 #include "arrow/util/bpacking_default.h"
 #include "arrow/util/cpu_info.h"
 #include "arrow/util/dispatch.h"
@@ -31,6 +32,7 @@
 #endif
 #if defined(ARROW_HAVE_NEON)
 #include "arrow/util/bpacking_neon.h"
+#include "bpacking16_default.h"
 #endif
 
 namespace arrow {
@@ -391,6 +393,79 @@ int unpack64_default(const uint8_t* in, uint64_t* out, int batch_size, int num_b
 int unpack64(const uint8_t* in, uint64_t* out, int batch_size, int num_bits) {
   // TODO: unpack64_neon, unpack64_avx2 and unpack64_avx512
   return unpack64_default(in, out, batch_size, num_bits);
+}
+
+namespace {
+int unpack16_default(const uint8_t* in, uint16_t* out, int batch_size, int num_bits) {
+  batch_size = batch_size / 32 * 32;
+  int num_loops = batch_size / 32;
+
+  switch (num_bits) {
+    case 0:
+      for (int i = 0; i < num_loops; ++i) in = unpack0_16(in, out + i * 32);
+      break;
+    case 1:
+      for (int i = 0; i < num_loops; ++i) in = unpack1_16(in, out + i * 32);
+      break;
+    case 2:
+      for (int i = 0; i < num_loops; ++i) in = unpack2_16(in, out + i * 32);
+      break;
+    case 3:
+      for (int i = 0; i < num_loops; ++i) in = unpack3_16(in, out + i * 32);
+      break;
+    case 4:
+      for (int i = 0; i < num_loops; ++i) in = unpack4_16(in, out + i * 32);
+      break;
+    case 5:
+      for (int i = 0; i < num_loops; ++i) in = unpack5_16(in, out + i * 32);
+      break;
+    case 6:
+      for (int i = 0; i < num_loops; ++i) in = unpack6_16(in, out + i * 32);
+      break;
+    case 7:
+      for (int i = 0; i < num_loops; ++i) in = unpack7_16(in, out + i * 32);
+      break;
+    case 8:
+      for (int i = 0; i < num_loops; ++i) in = unpack8_16(in, out + i * 32);
+      break;
+    case 9:
+      for (int i = 0; i < num_loops; ++i) in = unpack9_16(in, out + i * 32);
+      break;
+    case 10:
+      for (int i = 0; i < num_loops; ++i) in = unpack10_16(in, out + i * 32);
+      break;
+    case 11:
+      for (int i = 0; i < num_loops; ++i) in = unpack11_16(in, out + i * 32);
+      break;
+    case 12:
+      for (int i = 0; i < num_loops; ++i) in = unpack12_16(in, out + i * 32);
+      break;
+    case 13:
+      for (int i = 0; i < num_loops; ++i) in = unpack13_16(in, out + i * 32);
+      break;
+    case 14:
+      for (int i = 0; i < num_loops; ++i) in = unpack14_16(in, out + i * 32);
+      break;
+    case 15:
+      for (int i = 0; i < num_loops; ++i) in = unpack15_16(in, out + i * 32);
+      break;
+    case 16:
+      for (int i = 0; i < num_loops; ++i) in = unpack16_16(in, out + i * 32);
+      break;
+    default:
+      DCHECK(false) << "Unsupported num_bits";
+  }
+  return batch_size;
+}
+}
+
+int unpack16(const uint8_t* in, uint16_t* out, int batch_size, int num_bits) {
+  // TODO: unpack16_neon, unpack16_avx2
+#if defined(ARROW_HAVE_NEON)
+  return unpack16_neon(reinterpret_cast<const uint16_t*>(in), out, batch_size, num_bits);
+#else
+  return unpack16_default(in, out, batch_size, num_bits);
+#endif
 }
 
 }  // namespace internal

@@ -337,7 +337,13 @@ inline int BitReader::GetBatch(int num_bits, T* v, int batch_size) {
     }
   }
 
-  if (sizeof(T) == 4) {
+  if (sizeof(T) == 2) {
+    int num_unpacked =
+        internal::unpack16(buffer + byte_offset, reinterpret_cast<uint16_t*>(v + i),
+                           batch_size - i, num_bits);
+    i += num_unpacked;
+    byte_offset += num_unpacked * num_bits / 8;
+  } else if (sizeof(T) == 4) {
     int num_unpacked =
         internal::unpack32(reinterpret_cast<const uint32_t*>(buffer + byte_offset),
                            reinterpret_cast<uint32_t*>(v + i), batch_size - i, num_bits);

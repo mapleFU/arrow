@@ -134,5 +134,70 @@ static int unpack32_specialized(const uint32_t* in, uint32_t* out, int batch_siz
   return batch_size;
 }
 
+template <typename UnpackBits>
+static int unpack16_specialized(const uint16_t* in, uint16_t* out, int batch_size,
+                                int num_bits) {
+  batch_size = batch_size / 16 * 16;
+  int num_loops = batch_size / 16;
+
+  switch (num_bits) {
+    case 0:
+      for (int i = 0; i < num_loops; ++i) in = UnpackBits::unpack0_16(in, out + i * 16);
+      break;
+    case 1:
+      for (int i = 0; i < num_loops; ++i) in = UnpackBits::unpack1_16(in, out + i * 16);
+      break;
+    case 2:
+      for (int i = 0; i < num_loops; ++i) in = UnpackBits::unpack2_16(in, out + i * 16);
+      break;
+    case 3:
+      for (int i = 0; i < num_loops; ++i) in = UnpackBits::unpack3_16(in, out + i * 16);
+      break;
+    case 4:
+      for (int i = 0; i < num_loops; ++i) in = UnpackBits::unpack4_16(in, out + i * 16);
+      break;
+    case 5:
+      for (int i = 0; i < num_loops; ++i) in = UnpackBits::unpack5_16(in, out + i * 16);
+      break;
+    case 6:
+      for (int i = 0; i < num_loops; ++i) in = UnpackBits::unpack6_16(in, out + i * 16);
+      break;
+    case 7:
+      for (int i = 0; i < num_loops; ++i) in = UnpackBits::unpack7_16(in, out + i * 16);
+      break;
+    case 8:
+      for (int i = 0; i < num_loops; ++i) in = UnpackBits::unpack8_16(in, out + i * 16);
+      break;
+    case 9:
+      for (int i = 0; i < num_loops; ++i) in = UnpackBits::unpack9_16(in, out + i * 16);
+      break;
+    case 10:
+      for (int i = 0; i < num_loops; ++i) in = UnpackBits::unpack10_16(in, out + i * 16);
+      break;
+    case 11:
+      for (int i = 0; i < num_loops; ++i) in = UnpackBits::unpack11_16(in, out + i * 16);
+      break;
+    case 12:
+      for (int i = 0; i < num_loops; ++i) in = UnpackBits::unpack12_16(in, out + i * 16);
+      break;
+    case 13:
+      for (int i = 0; i < num_loops; ++i) in = UnpackBits::unpack13_16(in, out + i * 16);
+      break;
+    case 14:
+      for (int i = 0; i < num_loops; ++i) in = UnpackBits::unpack14_16(in, out + i * 16);
+      break;
+    case 15:
+      for (int i = 0; i < num_loops; ++i) in = UnpackBits::unpack15_16(in, out + i * 16);
+      break;
+    case 16:
+      for (int i = 0; i < num_loops; ++i) in = UnpackBits::unpack16_16(in, out + i * 16);
+      break;
+    default:
+      DCHECK(false) << "Unsupported num_bits";
+  }
+
+  return batch_size;
+}
+
 }  // namespace internal
 }  // namespace arrow

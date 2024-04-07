@@ -18,12 +18,18 @@
 #include "arrow/util/bpacking_neon.h"
 #include "arrow/util/bpacking_simd128_generated_internal.h"
 #include "arrow/util/bpacking_simd_internal.h"
+#include "arrow/util/bpacking16_simd128_generated_internal.h"
 
 namespace arrow {
 namespace internal {
 
 int unpack32_neon(const uint32_t* in, uint32_t* out, int batch_size, int num_bits) {
   return unpack32_specialized<UnpackBits128<DispatchLevel::NEON>>(in, out, batch_size,
+                                                                  num_bits);
+}
+
+int unpack16_neon(const uint16_t* in, uint16_t* out, int batch_size, int num_bits) {
+  return unpack16_specialized<Unpack16Bits128<DispatchLevel::NEON>>(in, out, batch_size,
                                                                   num_bits);
 }
 
