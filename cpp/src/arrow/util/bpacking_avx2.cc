@@ -28,7 +28,7 @@ int unpack32_avx2(const uint32_t* in, uint32_t* out, int batch_size, int num_bit
                                                                   num_bits);
 }
 
-int unpack16_avx2(const uint32_t* in, uint32_t* out, int batch_size, int num_bits) {
+int unpack16_avx2(const uint16_t* in, uint16_t* out, int batch_size, int num_bits) {
   return unpack16_specialized<Unpack16Bits256<DispatchLevel::AVX2>>(in, out, batch_size,
                                                                   num_bits);
 }

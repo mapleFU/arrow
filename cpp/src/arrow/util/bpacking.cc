@@ -396,7 +396,8 @@ int unpack64(const uint8_t* in, uint64_t* out, int batch_size, int num_bits) {
 }
 
 namespace {
-int unpack16_default(const uint8_t* in, uint16_t* out, int batch_size, int num_bits) {
+int unpack16_default(const uint16_t* in16, uint16_t* out, int batch_size, int num_bits) {
+  const uint8_t* in = reinterpret_cast<const uint8_t*>(in16);
   batch_size = batch_size / 32 * 32;
   int num_loops = batch_size / 32;
 
@@ -478,7 +479,7 @@ int unpack16(const uint8_t* in, uint16_t* out, int batch_size, int num_bits) {
   return unpack16_neon(reinterpret_cast<const uint16_t*>(in), out, batch_size, num_bits);
 #else
   static DynamicDispatch<Unpack16DynamicFunction> dispatch;
-  return dispatch.func(in, out, batch_size, num_bits);
+  return dispatch.func(reinterpret_cast<const uint16_t *>(in), out, batch_size, num_bits);
 #endif
 }
 
