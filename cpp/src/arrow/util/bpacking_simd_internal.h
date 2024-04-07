@@ -135,7 +135,7 @@ static int unpack32_specialized(const uint32_t* in, uint32_t* out, int batch_siz
 }
 
 template <typename UnpackBits>
-static int unpack16_specialized(const uint16_t* in, uint16_t* out, int batch_size,
+static int unpack16_specialized(const uint16_t* __restrict__ in, uint16_t* __restrict__ out, int batch_size,
                                 int num_bits) {
   batch_size = batch_size / 16 * 16;
   int num_loops = batch_size / 16;

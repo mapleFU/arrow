@@ -37,7 +37,7 @@ class UnpackGenerator:
 
     def print_unpack_bit0_func(self):
         print(
-            "inline static const uint16_t* unpack0_16(const uint16_t* in, uint16_t* out) {")
+            "inline static const uint16_t* unpack0_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {")
         print("  memset(out, 0x0, 16 * sizeof(*out));")
         print("  out += 16;")
         print("")
@@ -47,7 +47,7 @@ class UnpackGenerator:
 
     def print_unpack_bit16_func(self):
         print(
-            "inline static const uint16_t* unpack16_16(const uint16_t* in, uint16_t* out) {")
+            "inline static const uint16_t* unpack16_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {")
         print("  memcpy(out, in, 16 * sizeof(*out));")
         print("  in += 16;")
         print("  out += 16;")
@@ -66,7 +66,7 @@ class UnpackGenerator:
         mask = (1 << bit) - 1
         bracket = "{"
 
-        print(f"inline static const uint16_t* unpack{bit}_16(const uint16_t* in, uint16_t* out) {{")
+        print(f"inline static const uint16_t* unpack{bit}_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {{")
         p(dedent(f"""\
             uint16_t mask = 0x{mask:0x};
 

@@ -457,14 +457,28 @@ int unpack16_default(const uint8_t* in, uint16_t* out, int batch_size, int num_b
   }
   return batch_size;
 }
+
+struct Unpack16DynamicFunction {
+  using FunctionType = decltype(&unpack16_default);
+
+  static std::vector<std::pair<DispatchLevel, FunctionType>> implementations() {
+    return {{DispatchLevel::NONE, unpack16_default}
+#if defined(ARROW_HAVE_RUNTIME_AVX2)
+            ,
+            {DispatchLevel::AVX2, unpack16_avx2}
+#endif
+    };
+  }
+};
+
 }
 
 int unpack16(const uint8_t* in, uint16_t* out, int batch_size, int num_bits) {
-  // TODO: unpack16_neon, unpack16_avx2
 #if defined(ARROW_HAVE_NEON)
   return unpack16_neon(reinterpret_cast<const uint16_t*>(in), out, batch_size, num_bits);
 #else
-  return unpack16_default(in, out, batch_size, num_bits);
+  static DynamicDispatch<Unpack16DynamicFunction> dispatch;
+  return dispatch.func(in, out, batch_size, num_bits);
 #endif
 }
 

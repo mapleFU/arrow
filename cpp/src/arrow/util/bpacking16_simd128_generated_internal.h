@@ -38,14 +38,14 @@ struct Unpack16Bits128 {
 
 using simd_batch = xsimd::make_sized_batch_t<uint16_t, 8>;
 
-inline static const uint16_t* unpack0_16(const uint16_t* in, uint16_t* out) {
+inline static const uint16_t* unpack0_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {
   memset(out, 0x0, 16 * sizeof(*out));
   out += 16;
 
   return in;
 }
 
-inline static const uint16_t* unpack1_16(const uint16_t* in, uint16_t* out) {
+inline static const uint16_t* unpack1_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {
   uint16_t mask = 0x1;
 
   simd_batch masks(mask);
@@ -70,7 +70,7 @@ inline static const uint16_t* unpack1_16(const uint16_t* in, uint16_t* out) {
   return in;
 }
 
-inline static const uint16_t* unpack2_16(const uint16_t* in, uint16_t* out) {
+inline static const uint16_t* unpack2_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {
   uint16_t mask = 0x3;
 
   simd_batch masks(mask);
@@ -95,7 +95,7 @@ inline static const uint16_t* unpack2_16(const uint16_t* in, uint16_t* out) {
   return in;
 }
 
-inline static const uint16_t* unpack3_16(const uint16_t* in, uint16_t* out) {
+inline static const uint16_t* unpack3_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {
   uint16_t mask = 0x7;
 
   simd_batch masks(mask);
@@ -120,7 +120,7 @@ inline static const uint16_t* unpack3_16(const uint16_t* in, uint16_t* out) {
   return in;
 }
 
-inline static const uint16_t* unpack4_16(const uint16_t* in, uint16_t* out) {
+inline static const uint16_t* unpack4_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {
   uint16_t mask = 0xf;
 
   simd_batch masks(mask);
@@ -145,7 +145,7 @@ inline static const uint16_t* unpack4_16(const uint16_t* in, uint16_t* out) {
   return in;
 }
 
-inline static const uint16_t* unpack5_16(const uint16_t* in, uint16_t* out) {
+inline static const uint16_t* unpack5_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {
   uint16_t mask = 0x1f;
 
   simd_batch masks(mask);
@@ -170,7 +170,7 @@ inline static const uint16_t* unpack5_16(const uint16_t* in, uint16_t* out) {
   return in;
 }
 
-inline static const uint16_t* unpack6_16(const uint16_t* in, uint16_t* out) {
+inline static const uint16_t* unpack6_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {
   uint16_t mask = 0x3f;
 
   simd_batch masks(mask);
@@ -195,7 +195,7 @@ inline static const uint16_t* unpack6_16(const uint16_t* in, uint16_t* out) {
   return in;
 }
 
-inline static const uint16_t* unpack7_16(const uint16_t* in, uint16_t* out) {
+inline static const uint16_t* unpack7_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {
   uint16_t mask = 0x7f;
 
   simd_batch masks(mask);
@@ -220,7 +220,7 @@ inline static const uint16_t* unpack7_16(const uint16_t* in, uint16_t* out) {
   return in;
 }
 
-inline static const uint16_t* unpack8_16(const uint16_t* in, uint16_t* out) {
+inline static const uint16_t* unpack8_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {
   uint16_t mask = 0xff;
 
   simd_batch masks(mask);
@@ -245,7 +245,7 @@ inline static const uint16_t* unpack8_16(const uint16_t* in, uint16_t* out) {
   return in;
 }
 
-inline static const uint16_t* unpack9_16(const uint16_t* in, uint16_t* out) {
+inline static const uint16_t* unpack9_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {
   uint16_t mask = 0x1ff;
 
   simd_batch masks(mask);
@@ -270,7 +270,7 @@ inline static const uint16_t* unpack9_16(const uint16_t* in, uint16_t* out) {
   return in;
 }
 
-inline static const uint16_t* unpack10_16(const uint16_t* in, uint16_t* out) {
+inline static const uint16_t* unpack10_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {
   uint16_t mask = 0x3ff;
 
   simd_batch masks(mask);
@@ -295,7 +295,7 @@ inline static const uint16_t* unpack10_16(const uint16_t* in, uint16_t* out) {
   return in;
 }
 
-inline static const uint16_t* unpack11_16(const uint16_t* in, uint16_t* out) {
+inline static const uint16_t* unpack11_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {
   uint16_t mask = 0x7ff;
 
   simd_batch masks(mask);
@@ -320,7 +320,7 @@ inline static const uint16_t* unpack11_16(const uint16_t* in, uint16_t* out) {
   return in;
 }
 
-inline static const uint16_t* unpack12_16(const uint16_t* in, uint16_t* out) {
+inline static const uint16_t* unpack12_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {
   uint16_t mask = 0xfff;
 
   simd_batch masks(mask);
@@ -345,7 +345,7 @@ inline static const uint16_t* unpack12_16(const uint16_t* in, uint16_t* out) {
   return in;
 }
 
-inline static const uint16_t* unpack13_16(const uint16_t* in, uint16_t* out) {
+inline static const uint16_t* unpack13_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {
   uint16_t mask = 0x1fff;
 
   simd_batch masks(mask);
@@ -370,7 +370,7 @@ inline static const uint16_t* unpack13_16(const uint16_t* in, uint16_t* out) {
   return in;
 }
 
-inline static const uint16_t* unpack14_16(const uint16_t* in, uint16_t* out) {
+inline static const uint16_t* unpack14_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {
   uint16_t mask = 0x3fff;
 
   simd_batch masks(mask);
@@ -395,7 +395,7 @@ inline static const uint16_t* unpack14_16(const uint16_t* in, uint16_t* out) {
   return in;
 }
 
-inline static const uint16_t* unpack15_16(const uint16_t* in, uint16_t* out) {
+inline static const uint16_t* unpack15_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {
   uint16_t mask = 0x7fff;
 
   simd_batch masks(mask);
@@ -420,7 +420,7 @@ inline static const uint16_t* unpack15_16(const uint16_t* in, uint16_t* out) {
   return in;
 }
 
-inline static const uint16_t* unpack16_16(const uint16_t* in, uint16_t* out) {
+inline static const uint16_t* unpack16_16(const uint16_t* __restrict__ in, uint16_t* __restrict__ out) {
   memcpy(out, in, 16 * sizeof(*out));
   in += 16;
   out += 16;
