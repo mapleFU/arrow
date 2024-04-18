@@ -1645,7 +1645,7 @@ class TypedRecordReader : public TypedColumnReaderImpl<DType>,
 
   std::shared_ptr<ResizableBuffer> ReleaseValues() override {
     if (uses_values_) {
-      auto result = values_;
+      auto result = std::move(values_);
       PARQUET_THROW_NOT_OK(
           result->Resize(bytes_for_values(values_written_), /*shrink_to_fit=*/true));
       values_ = AllocateBuffer(this->pool_);
@@ -1682,8 +1682,12 @@ class TypedRecordReader : public TypedColumnReaderImpl<DType>,
     const int16_t* rep_levels = this->rep_levels() + levels_position_;
 
     ARROW_DCHECK_GT(this->max_rep_level_, 0);
+    ARROW_DCHECK(rep_levels != nullptr);
+    ARROW_DCHECK(def_levels != nullptr);
+    ARROW_COMPILER_ASSUME(rep_levels != def_levels);
 
     // Count logical records and number of values to read
+    const int64_t max_def_level = this->max_def_level_;
     while (levels_position_ < levels_written_) {
       const int16_t rep_level = *rep_levels++;
       if (rep_level == 0) {
@@ -1707,7 +1711,7 @@ class TypedRecordReader : public TypedColumnReaderImpl<DType>,
       at_record_start_ = false;
 
       const int16_t def_level = *def_levels++;
-      if (def_level == this->max_def_level_) {
+      if (def_level == max_def_level) {
         ++values_to_read;
       }
       ++levels_position_;
