@@ -159,54 +159,36 @@ void ByteStreamSplitEncodeSimd128(const uint8_t* raw_values, int width,
     if constexpr (kNumStreams == 8) {
       // This is the path for 64bits data.
       simd_batch tmp[8];
-      using int32_batch = xsimd::make_sized_batch_t<int32_t, 4>;
-      // This is a workaround, see: https://github.com/xtensor-stack/xsimd/issues/735
-      auto from_int32_batch = [](int32_batch from) -> simd_batch {
-        simd_batch dest;
-        memcpy(&dest, &from, sizeof(simd_batch));
-        return dest;
-      };
-      auto to_int32_batch = [](simd_batch from) -> int32_batch {
-        int32_batch dest;
-        memcpy(&dest, &from, sizeof(simd_batch));
-        return dest;
-      };
       for (int i = 0; i < 4; ++i) {
-        tmp[i * 2] = from_int32_batch(
-            xsimd::zip_lo(to_int32_batch(stage[2][i]), to_int32_batch(stage[2][i + 4])));
-        tmp[i * 2 + 1] = from_int32_batch(
-            xsimd::zip_hi(to_int32_batch(stage[2][i]), to_int32_batch(stage[2][i + 4])));
+        tmp[i * 2] = xsimd::bitwise_cast<int8_t>(
+            xsimd::zip_lo(xsimd::bitwise_cast<int32_t>(stage[2][i]),
+                          xsimd::bitwise_cast<int32_t>(stage[2][i + 4])));
+        tmp[i * 2 + 1] = xsimd::bitwise_cast<int8_t>(
+            xsimd::zip_hi(xsimd::bitwise_cast<int32_t>(stage[2][i]),
+                          xsimd::bitwise_cast<int32_t>(stage[2][i + 4])));
       }
       for (int i = 0; i < 4; ++i) {
-        final_result[i * 2] = from_int32_batch(
-            xsimd::zip_lo(to_int32_batch(tmp[i]), to_int32_batch(tmp[i + 4])));
-        final_result[i * 2 + 1] = from_int32_batch(
-            xsimd::zip_hi(to_int32_batch(tmp[i]), to_int32_batch(tmp[i + 4])));
+        final_result[i * 2] = xsimd::bitwise_cast<int8_t>(
+            xsimd::zip_lo(xsimd::bitwise_cast<int32_t>(tmp[i]),
+                          xsimd::bitwise_cast<int32_t>(tmp[i + 4])));
+        final_result[i * 2 + 1] = xsimd::bitwise_cast<int8_t>(
+            xsimd::zip_hi(xsimd::bitwise_cast<int32_t>(tmp[i]),
+                          xsimd::bitwise_cast<int32_t>(tmp[i + 4])));
       }
     } else {
       // This is the path for 32bits data.
-      using int64_batch = xsimd::make_sized_batch_t<int64_t, 2>;
-      // This is a workaround, see: https://github.com/xtensor-stack/xsimd/issues/735
-      auto from_int64_batch = [](int64_batch from) -> simd_batch {
-        simd_batch dest;
-        memcpy(&dest, &from, sizeof(simd_batch));
-        return dest;
-      };
-      auto to_int64_batch = [](simd_batch from) -> int64_batch {
-        int64_batch dest;
-        memcpy(&dest, &from, sizeof(simd_batch));
-        return dest;
-      };
       simd_batch tmp[4];
       for (int i = 0; i < 2; ++i) {
         tmp[i * 2] = xsimd::zip_lo(stage[2][i * 2], stage[2][i * 2 + 1]);
         tmp[i * 2 + 1] = xsimd::zip_hi(stage[2][i * 2], stage[2][i * 2 + 1]);
       }
       for (int i = 0; i < 2; ++i) {
-        final_result[i * 2] = from_int64_batch(
-            xsimd::zip_lo(to_int64_batch(tmp[i]), to_int64_batch(tmp[i + 2])));
-        final_result[i * 2 + 1] = from_int64_batch(
-            xsimd::zip_hi(to_int64_batch(tmp[i]), to_int64_batch(tmp[i + 2])));
+        final_result[i * 2] = xsimd::bitwise_cast<int8_t>(
+            xsimd::zip_lo(xsimd::bitwise_cast<int64_t>(tmp[i]),
+                          xsimd::bitwise_cast<int64_t>(tmp[i + 2])));
+        final_result[i * 2 + 1] = xsimd::bitwise_cast<int8_t>(
+            xsimd::zip_hi(xsimd::bitwise_cast<int64_t>(tmp[i]),
+                          xsimd::bitwise_cast<int64_t>(tmp[i + 2])));
       }
     }
     for (int i = 0; i < kNumStreams; ++i) {
