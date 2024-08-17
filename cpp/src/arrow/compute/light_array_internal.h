@@ -65,12 +65,12 @@ struct ARROW_EXPORT KeyColumnMetadata {
   /// If this is true the column will have a validity buffer and
   /// a data buffer and the third buffer will be unused.
   bool is_fixed_length;
-  /// \brief True if this column is the null type
+  /// \brief True if this column is the null type(NA).
   bool is_null_type;
   /// \brief The number of bytes for each item
   ///
   /// Zero has a special meaning, indicating a bit vector with one bit per value if it
-  /// isn't a null type column.
+  /// isn't a null type column. Generally, this means that the column is a boolean type.
   ///
   /// For a varying-length binary column this represents the number of bytes per offset.
   uint32_t fixed_length;
@@ -182,7 +182,8 @@ class ARROW_EXPORT KeyColumnArray {
   KeyColumnMetadata metadata_;
   int64_t length_;
   // Starting bit offset within the first byte (between 0 and 7)
-  // to be used when accessing buffers that store bit vectors.
+  // to be used when accessing buffers that store bit vectors,
+  // e.g. validity buffer and fixed length buffer for boolean type.
   int bit_offset_[kMaxBuffers - 1];
 
   bool is_bool_type() const {
@@ -291,7 +292,8 @@ class ARROW_EXPORT ResizableArrayData {
   ~ResizableArrayData() { Clear(true); }
 
   /// \brief Initialize the array
-  /// \param data_type The data type this array is holding data for.
+  /// \param data_type The data type this array is holding data for. This must be a
+  ///                  type that is supported by KeyColumnArray.
   /// \param pool The pool to make allocations on
   /// \param log_num_rows_min All resize operations will allocate at least enough
   ///                         space for (1 << log_num_rows_min) rows

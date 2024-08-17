@@ -225,7 +225,7 @@ Status HashJoinDictBuild::Init(ExecContext* ctx, std::shared_ptr<Array> dictiona
     return Status::OK();
   }
 
-  dictionary_ = dictionary;
+  dictionary_ = std::move(dictionary);
 
   // Initialize encoder
   RowEncoder encoder;
@@ -234,12 +234,12 @@ Status HashJoinDictBuild::Init(ExecContext* ctx, std::shared_ptr<Array> dictiona
   encoder.Init(encoder_types, ctx);
 
   // Encode all dictionary values
-  int64_t length = dictionary->data()->length;
+  int64_t length = dictionary_->data()->length;
   if (length >= std::numeric_limits<int32_t>::max()) {
     return Status::Invalid(
         "Dictionary length in hash join must fit into signed 32-bit integer.");
   }
-  RETURN_NOT_OK(encoder.EncodeAndAppend(ExecSpan({*dictionary->data()}, length)));
+  RETURN_NOT_OK(encoder.EncodeAndAppend(ExecSpan({*dictionary_->data()}, length)));
 
   std::vector<int32_t> entries_to_take;
 
@@ -617,12 +617,12 @@ void HashJoinDictProbeMulti::InitEncoder(
   for (int icol = 0; icol < num_cols; ++icol) {
     std::shared_ptr<DataType> data_type =
         proj_map_probe.data_type(HashJoinProjection::KEY, icol);
-    std::shared_ptr<DataType> build_data_type =
+    const std::shared_ptr<DataType>& build_data_type =
         proj_map_build.data_type(HashJoinProjection::KEY, icol);
     if (HashJoinDictProbe::KeyNeedsProcessing(data_type, build_data_type)) {
       data_type = HashJoinDictProbe::DataTypeAfterRemapping(build_data_type);
     }
-    data_types[icol] = data_type;
+    data_types[icol] = std::move(data_type);
   }
   encoder->Init(data_types, ctx);
 }

@@ -88,7 +88,7 @@ class ARROW_ACERO_EXPORT HashJoinSchema {
                                             const SchemaProjectionMap& right_to_filter,
                                             const Expression& filter);
 
-  bool PayloadIsEmpty(int side) {
+  bool PayloadIsEmpty(int side) const {
     assert(side == 0 || side == 1);
     return proj_maps[side].num_cols(HashJoinProjection::PAYLOAD) == 0;
   }
