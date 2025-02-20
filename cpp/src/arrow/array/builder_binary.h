@@ -389,6 +389,10 @@ class BaseBinaryBuilder
     return std::numeric_limits<offset_type>::max() - 1;
   }
 
+  TypedBufferBuilder<uint8_t>& value_data_builder() { return value_data_builder_; }
+
+  TypedBufferBuilder<offset_type>& offset_builder() { return offsets_builder_; }
+
  protected:
   TypedBufferBuilder<offset_type> offsets_builder_;
   TypedBufferBuilder<uint8_t> value_data_builder_;

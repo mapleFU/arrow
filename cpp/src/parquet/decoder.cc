@@ -1679,36 +1679,37 @@ class DeltaLengthByteArrayDecoder : public DecoderImpl,
                           int64_t valid_bits_offset,
                           typename EncodingTraits<ByteArrayType>::Accumulator* out,
                           int* out_num_values) {
-    ArrowBinaryHelper<ByteArrayType> helper(out, num_values);
-    RETURN_NOT_OK(helper.Prepare());
-
-    std::vector<ByteArray> values(num_values - null_count);
-    const int num_valid_values = Decode(values.data(), num_values - null_count);
-    if (ARROW_PREDICT_FALSE(num_values - null_count != num_valid_values)) {
-      throw ParquetException("Expected to decode ", num_values - null_count,
-                             " values, but decoded ", num_valid_values, " values.");
+    const int32_t* length_ptr = buffered_length_->data_as<int32_t>() + length_idx_;
+    int bytes_offset = len_ - decoder_->bytes_left();
+    // get the final bytes offset
+    int accum_length = 0;
+    for (int i = 0; i < num_values; ++i) {
+      if (ARROW_PREDICT_FALSE(length_ptr[i] < 0)) {
+        return Status::Invalid("Negative string delta length");
+      }
+      accum_length += length_ptr[i];
     }
-
-    auto values_ptr = values.data();
-    int value_idx = 0;
-
+    RETURN_NOT_OK(out->builder->Reserve(num_values));
+    out->builder->UnsafeAppendToBitmap(valid_bits, valid_bits_offset, num_values);
+    RETURN_NOT_OK(
+        out->builder->value_data_builder().Append(data_ + bytes_offset, accum_length));
+    auto& offset_builder = out->builder->offset_builder();
+    accum_length = 0;
+    int length_idx = 0;
     RETURN_NOT_OK(VisitNullBitmapInline(
         valid_bits, valid_bits_offset, num_values, null_count,
         [&]() {
-          const auto& val = values_ptr[value_idx];
-          RETURN_NOT_OK(helper.PrepareNextInput(val.len));
-          RETURN_NOT_OK(helper.Append(val.ptr, static_cast<int32_t>(val.len)));
-          ++value_idx;
+          offset_builder.UnsafeAppend(length_ptr[length_idx]);
+          ++length_idx;
           return Status::OK();
         },
         [&]() {
-          RETURN_NOT_OK(helper.AppendNull());
-          --null_count;
+          offset_builder.UnsafeAppend(0);
           return Status::OK();
         }));
-
+    length_idx_ += (num_values - null_count);
     DCHECK_EQ(null_count, 0);
-    *out_num_values = num_valid_values;
+    *out_num_values = num_values - null_count;
     return Status::OK();
   }
 
