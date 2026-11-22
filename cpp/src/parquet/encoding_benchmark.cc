@@ -18,6 +18,7 @@
 #include "benchmark/benchmark.h"
 
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -664,71 +665,177 @@ BENCHMARK(BM_ByteStreamSplitEncode_Double_Neon)->Apply(ByteStreamSplitApply);
 // ----------------------------------------------------------------------
 // ALP encoding/decoding benchmarks
 
-static void BM_AlpEncodingFloat(benchmark::State& state) {
-  std::vector<float> values(state.range(0), 64.0f);
-  auto encoder = MakeTypedEncoder<FloatType>(Encoding::ALP);
+template <typename DType>
+static auto MakeAlpInputConstant(size_t length) {
+  using T = typename DType::c_type;
+  return std::vector<T>(length, static_cast<T>(64.0));
+}
+
+// Wide-range 2-decimal measurements with no exceptions (exercises non-zero bit width).
+template <typename DType>
+static auto MakeAlpInputDecimal(size_t length) {
+  using T = typename DType::c_type;
+  std::vector<T> values(length);
+  for (size_t i = 0; i < length; ++i) {
+    const int64_t scaled = static_cast<int64_t>((i * 17) % 200000) - 100000;
+    values[i] = static_cast<T>(scaled) / static_cast<T>(100.0);
+  }
+  return values;
+}
+
+// Same 2-decimal measurements with 1% deterministic non-decimal exceptions (matches
+// arrow-rs parquet/benches/alp.rs decimal_with_exceptions).
+template <typename DType>
+static auto MakeAlpInputDecimalWithExceptions(size_t length) {
+  using T = typename DType::c_type;
+  std::vector<T> values = MakeAlpInputDecimal<DType>(length);
+  for (size_t i = 0; i < length; i += 100) {
+    if constexpr (std::is_same_v<T, float>) {
+      values[i] = std::bit_cast<float>(uint32_t{0x3f800000U} | static_cast<uint32_t>(i));
+    } else {
+      values[i] = std::bit_cast<double>(uint64_t{0x3ff0000000000000ULL} |
+                                        static_cast<uint64_t>(i));
+    }
+  }
+  return values;
+}
+
+// Deterministic uniform high-precision floats via SplitMix64 (matches arrow-rs
+// parquet/benches/alp.rs high_precision). Worst-case input for decimal ALP.
+template <typename DType>
+static auto MakeAlpInputHighPrecision(size_t length) {
+  using T = typename DType::c_type;
+  uint64_t state = 0x9e3779b97f4a7c15ULL;
+  auto next_u64 = [&]() {
+    state += 0x9e3779b97f4a7c15ULL;
+    uint64_t z = state;
+    z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
+    return z ^ (z >> 31);
+  };
+  std::vector<T> values(length);
+  for (size_t i = 0; i < length; ++i) {
+    const uint64_t r = next_u64();
+    if constexpr (std::is_same_v<T, float>) {
+      values[i] = static_cast<float>(r >> 40) * (1.0f / static_cast<float>(1U << 24));
+    } else {
+      values[i] = static_cast<double>(r >> 11) * (1.0 / static_cast<double>(1ULL << 53));
+    }
+  }
+  return values;
+}
+
+template <typename DType, typename NumberGenerator>
+static void BM_AlpEncode(benchmark::State& state, NumberGenerator gen) {
+  using T = typename DType::c_type;
+  std::vector<T> values = gen(static_cast<size_t>(state.range(0)));
+  auto encoder = MakeTypedEncoder<DType>(Encoding::ALP);
+  int64_t encoded_size = 0;
   for (auto _ : state) {
     encoder->Put(values.data(), static_cast<int>(values.size()));
-    encoder->FlushValues();
+    std::shared_ptr<Buffer> buf = encoder->FlushValues();
+    encoded_size = buf->size();
+    benchmark::DoNotOptimize(buf);
   }
-  state.SetBytesProcessed(state.iterations() * state.range(0) * sizeof(float));
-  state.SetItemsProcessed(state.iterations() * state.range(0));
+  state.SetBytesProcessed(state.iterations() * values.size() * sizeof(T));
+  state.SetItemsProcessed(state.iterations() * values.size());
+  state.counters["bits_per_value"] =
+      static_cast<double>(encoded_size) * 8.0 / static_cast<double>(values.size());
+}
+
+template <typename DType, typename NumberGenerator>
+static void BM_AlpDecode(benchmark::State& state, NumberGenerator gen) {
+  using T = typename DType::c_type;
+  std::vector<T> values = gen(static_cast<size_t>(state.range(0)));
+  auto encoder = MakeTypedEncoder<DType>(Encoding::ALP);
+  encoder->Put(values.data(), static_cast<int>(values.size()));
+  std::shared_ptr<Buffer> buf = encoder->FlushValues();
+
+  auto decoder = MakeTypedDecoder<DType>(Encoding::ALP);
+  std::vector<T> output(values.size());
+  for (auto _ : state) {
+    decoder->SetData(static_cast<int>(values.size()), buf->data(),
+                     static_cast<int>(buf->size()));
+    decoder->Decode(output.data(), static_cast<int>(values.size()));
+    benchmark::ClobberMemory();
+  }
+  state.SetBytesProcessed(state.iterations() * values.size() * sizeof(T));
+  state.SetItemsProcessed(state.iterations() * values.size());
+  state.counters["bits_per_value"] =
+      static_cast<double>(buf->size()) * 8.0 / static_cast<double>(values.size());
+}
+
+static void BM_AlpEncodingFloat(benchmark::State& state) {
+  BM_AlpEncode<FloatType>(state, MakeAlpInputConstant<FloatType>);
+}
+static void BM_AlpDecodingFloat(benchmark::State& state) {
+  BM_AlpDecode<FloatType>(state, MakeAlpInputConstant<FloatType>);
+}
+static void BM_AlpEncodingDouble(benchmark::State& state) {
+  BM_AlpEncode<DoubleType>(state, MakeAlpInputConstant<DoubleType>);
+}
+static void BM_AlpDecodingDouble(benchmark::State& state) {
+  BM_AlpDecode<DoubleType>(state, MakeAlpInputConstant<DoubleType>);
+}
+
+static void BM_AlpEncodingFloat_Decimal(benchmark::State& state) {
+  BM_AlpEncode<FloatType>(state, MakeAlpInputDecimal<FloatType>);
+}
+static void BM_AlpDecodingFloat_Decimal(benchmark::State& state) {
+  BM_AlpDecode<FloatType>(state, MakeAlpInputDecimal<FloatType>);
+}
+static void BM_AlpEncodingDouble_Decimal(benchmark::State& state) {
+  BM_AlpEncode<DoubleType>(state, MakeAlpInputDecimal<DoubleType>);
+}
+static void BM_AlpDecodingDouble_Decimal(benchmark::State& state) {
+  BM_AlpDecode<DoubleType>(state, MakeAlpInputDecimal<DoubleType>);
+}
+
+static void BM_AlpEncodingFloat_DecimalWithExceptions(benchmark::State& state) {
+  BM_AlpEncode<FloatType>(state, MakeAlpInputDecimalWithExceptions<FloatType>);
+}
+static void BM_AlpDecodingFloat_DecimalWithExceptions(benchmark::State& state) {
+  BM_AlpDecode<FloatType>(state, MakeAlpInputDecimalWithExceptions<FloatType>);
+}
+static void BM_AlpEncodingDouble_DecimalWithExceptions(benchmark::State& state) {
+  BM_AlpEncode<DoubleType>(state, MakeAlpInputDecimalWithExceptions<DoubleType>);
+}
+static void BM_AlpDecodingDouble_DecimalWithExceptions(benchmark::State& state) {
+  BM_AlpDecode<DoubleType>(state, MakeAlpInputDecimalWithExceptions<DoubleType>);
+}
+
+static void BM_AlpEncodingFloat_HighPrecision(benchmark::State& state) {
+  BM_AlpEncode<FloatType>(state, MakeAlpInputHighPrecision<FloatType>);
+}
+static void BM_AlpDecodingFloat_HighPrecision(benchmark::State& state) {
+  BM_AlpDecode<FloatType>(state, MakeAlpInputHighPrecision<FloatType>);
+}
+static void BM_AlpEncodingDouble_HighPrecision(benchmark::State& state) {
+  BM_AlpEncode<DoubleType>(state, MakeAlpInputHighPrecision<DoubleType>);
+}
+static void BM_AlpDecodingDouble_HighPrecision(benchmark::State& state) {
+  BM_AlpDecode<DoubleType>(state, MakeAlpInputHighPrecision<DoubleType>);
 }
 
 BENCHMARK(BM_AlpEncodingFloat)->Range(MIN_RANGE, MAX_RANGE);
-
-static void BM_AlpDecodingFloat(benchmark::State& state) {
-  std::vector<float> values(state.range(0), 64.0f);
-  auto encoder = MakeTypedEncoder<FloatType>(Encoding::ALP);
-  encoder->Put(values.data(), static_cast<int>(values.size()));
-  std::shared_ptr<Buffer> buf = encoder->FlushValues();
-
-  auto decoder = MakeTypedDecoder<FloatType>(Encoding::ALP);
-  std::vector<float> output(values.size());
-  for (auto _ : state) {
-    decoder->SetData(static_cast<int>(values.size()), buf->data(),
-                     static_cast<int>(buf->size()));
-    decoder->Decode(output.data(), static_cast<int>(values.size()));
-    benchmark::ClobberMemory();
-  }
-  state.SetBytesProcessed(state.iterations() * state.range(0) * sizeof(float));
-  state.SetItemsProcessed(state.iterations() * state.range(0));
-}
-
 BENCHMARK(BM_AlpDecodingFloat)->Range(MIN_RANGE, MAX_RANGE);
-
-static void BM_AlpEncodingDouble(benchmark::State& state) {
-  std::vector<double> values(state.range(0), 64.0);
-  auto encoder = MakeTypedEncoder<DoubleType>(Encoding::ALP);
-  for (auto _ : state) {
-    encoder->Put(values.data(), static_cast<int>(values.size()));
-    encoder->FlushValues();
-  }
-  state.SetBytesProcessed(state.iterations() * state.range(0) * sizeof(double));
-  state.SetItemsProcessed(state.iterations() * state.range(0));
-}
-
 BENCHMARK(BM_AlpEncodingDouble)->Range(MIN_RANGE, MAX_RANGE);
-
-static void BM_AlpDecodingDouble(benchmark::State& state) {
-  std::vector<double> values(state.range(0), 64.0);
-  auto encoder = MakeTypedEncoder<DoubleType>(Encoding::ALP);
-  encoder->Put(values.data(), static_cast<int>(values.size()));
-  std::shared_ptr<Buffer> buf = encoder->FlushValues();
-
-  auto decoder = MakeTypedDecoder<DoubleType>(Encoding::ALP);
-  std::vector<double> output(values.size());
-  for (auto _ : state) {
-    decoder->SetData(static_cast<int>(values.size()), buf->data(),
-                     static_cast<int>(buf->size()));
-    decoder->Decode(output.data(), static_cast<int>(values.size()));
-    benchmark::ClobberMemory();
-  }
-  state.SetBytesProcessed(state.iterations() * state.range(0) * sizeof(double));
-  state.SetItemsProcessed(state.iterations() * state.range(0));
-}
-
 BENCHMARK(BM_AlpDecodingDouble)->Range(MIN_RANGE, MAX_RANGE);
+
+BENCHMARK(BM_AlpEncodingFloat_Decimal)->Range(MIN_RANGE, MAX_RANGE);
+BENCHMARK(BM_AlpDecodingFloat_Decimal)->Range(MIN_RANGE, MAX_RANGE);
+BENCHMARK(BM_AlpEncodingDouble_Decimal)->Range(MIN_RANGE, MAX_RANGE);
+BENCHMARK(BM_AlpDecodingDouble_Decimal)->Range(MIN_RANGE, MAX_RANGE);
+
+BENCHMARK(BM_AlpEncodingFloat_DecimalWithExceptions)->Range(MIN_RANGE, MAX_RANGE);
+BENCHMARK(BM_AlpDecodingFloat_DecimalWithExceptions)->Range(MIN_RANGE, MAX_RANGE);
+BENCHMARK(BM_AlpEncodingDouble_DecimalWithExceptions)->Range(MIN_RANGE, MAX_RANGE);
+BENCHMARK(BM_AlpDecodingDouble_DecimalWithExceptions)->Range(MIN_RANGE, MAX_RANGE);
+
+BENCHMARK(BM_AlpEncodingFloat_HighPrecision)->Range(MIN_RANGE, MAX_RANGE);
+BENCHMARK(BM_AlpDecodingFloat_HighPrecision)->Range(MIN_RANGE, MAX_RANGE);
+BENCHMARK(BM_AlpEncodingDouble_HighPrecision)->Range(MIN_RANGE, MAX_RANGE);
+BENCHMARK(BM_AlpDecodingDouble_HighPrecision)->Range(MIN_RANGE, MAX_RANGE);
 
 // ----------------------------------------------------------------------
 // DeltaBitPacking encoding/decoding benchmarks
